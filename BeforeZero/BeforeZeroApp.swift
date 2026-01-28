@@ -5,6 +5,7 @@
 //  Created by acortino on 27/01/2026.
 //
 
+
 import SwiftUI
 import SwiftData
 
@@ -12,7 +13,7 @@ import SwiftData
 struct BeforeZeroApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +26,7 @@ struct BeforeZeroApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Homepage()
         }
         .modelContainer(sharedModelContainer)
     }
