@@ -34,6 +34,8 @@ struct Homepage: View {
                     }) {
                         Label("Add expense", systemImage: "minus.circle")
                     }
+                    .accessibilityLabel("Add expense")
+                    .accessibilityHint("Opens a sheet to record a new expense")
 
                     Button(action: {
                         entryMode = .input
@@ -41,12 +43,16 @@ struct Homepage: View {
                     }) {
                         Label("Add input", systemImage: "plus.circle")
                     }
+                    .accessibilityLabel("Add input")
+                    .accessibilityHint("Opens a sheet to record a new input")
 
                     Button(action: {
                         manager.resetToInitial()
                     }) {
                         Label("Reset", systemImage: "arrow.clockwise")
                     }
+                    .accessibilityLabel("Reset amount")
+                    .accessibilityHint("Reset amount to the default value")
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -70,64 +76,7 @@ struct Homepage: View {
         }
 }
 
-struct AmountEntryView: View {
-    let mode: EntryMode
-    @State private var text = ""
-    var onDone: (Double) -> Void
 
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text(mode == .expense ? "Expense amount" : "Income amount")) {
-                    TextField("Enter amount", text: $text)
-                        .keyboardType(.decimalPad)
-                }
-            }
-            .navigationTitle(mode == .expense ? "Add expense" : "Add input")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to:nil, from:nil, for:nil)
-                        if let value = Double(text) {
-                            onDone(value)
-                        }
-                    }
-                    .disabled(Double(text) == nil)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onDone(0) }   // close without changes
-                }
-            }
-        }
-    }
-}
-
-struct FirstRunSetupView: View {
-    @State private var text = ""
-    var onComplete: (Double) -> Void
-
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Initial amount")) {
-                    TextField("Enter starting amount", text: $text)
-                        .keyboardType(.decimalPad)
-                }
-            }
-            .navigationTitle("Welcome")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Start") {
-                        if let value = Double(text) {
-                            onComplete(value)
-                        }
-                    }
-                    .disabled(Double(text) == nil)
-                }
-            }
-        }
-    }
-}
 
 #Preview {
     Homepage()
