@@ -87,6 +87,7 @@ struct AmountEntryView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to:nil, from:nil, for:nil)
                         if let value = Double(text) {
                             onDone(value)
                         }
