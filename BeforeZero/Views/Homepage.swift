@@ -17,6 +17,7 @@ struct Homepage: View {
         // Helper to present a sheet for entering a number.
         @State private var showingEntrySheet = false
         @State private var entryMode: EntryMode = .expense   // .expense or .input
+        @State private var showResetConfirm = false
 
         var body: some View {
             VStack(spacing: 30) {
@@ -46,13 +47,21 @@ struct Homepage: View {
                     .accessibilityLabel("Add input")
                     .accessibilityHint("Opens a sheet to record a new input")
 
-                    Button(action: {
-                        manager.resetToInitial()
-                    }) {
+                    Button {
+                        showResetConfirm = true
+                    } label: {
                         Label("Reset", systemImage: "arrow.clockwise")
                     }
                     .accessibilityLabel("Reset amount")
                     .accessibilityHint("Reset amount to the default value")
+                    .confirmationDialog("Confirm reset?", isPresented: $showResetConfirm, titleVisibility: .visible) {
+                        Button("Reset amount", role: .destructive) {
+                            manager.resetToInitial()
+                        }
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("This will set the amount back to the default value.")
+                    }
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -75,8 +84,6 @@ struct Homepage: View {
             }
         }
 }
-
-
 
 #Preview {
     Homepage()
