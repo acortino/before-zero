@@ -7,97 +7,159 @@
 
 import SwiftUI
 
-
 enum EntryMode { case expense, input }
 
 struct Homepage: View {
     @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
 
-    // The manager lives for the whole app lifetime.
-        @StateObject private var manager = ExpenseManager()
+    @StateObject private var manager = ExpenseManager()
 
-        // Helper to present a sheet for entering a number.
-        @State private var showingEntrySheet = false
-        @State private var entryMode: EntryMode = .expense   // .expense or .input
-        @State private var showResetConfirm = false
-    
+    @State private var showingEntrySheet = false
+    @State private var entryMode: EntryMode = .expense
+    @State private var showResetConfirm = false
+
     private var currencyCode: String {
         (AppCurrency(rawValue: currencyRaw) ?? .eur).code
     }
 
+    private var lastFiveOperations: [Operation] {
+        Array(manager.operations.prefix(5))
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 30) {
-                Text("Current amount")
-                    .font(.headline)
-                
-                Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
-                    .font(.largeTitle)
-                    .bold()
-                
-                HStack(spacing: 20) {
-                    Button(action: {
-                        entryMode = .expense
-                        showingEntrySheet = true
-                    }) {
-                        Label("Add expense", systemImage: "minus.circle")
-                    }
-                    .accessibilityLabel("Add expense")
-                    .accessibilityHint("Opens a sheet to record a new expense")
-                    
-                    Button(action: {
-                        entryMode = .input
-                        showingEntrySheet = true
-                    }) {
-                        Label("Add input", systemImage: "plus.circle")
-                    }
-                    .accessibilityLabel("Add input")
-                    .accessibilityHint("Opens a sheet to record a new input")
-                    
-                    Button {
-                        showResetConfirm = true
-                    } label: {
-                        Label("Reset", systemImage: "arrow.clockwise")
-                    }
-                    .accessibilityLabel("Reset amount")
-                    .accessibilityHint("Reset amount to the default value")
-                    .confirmationDialog("Confirm reset?", isPresented: $showResetConfirm, titleVisibility: .visible) {
-                        Button("Reset amount", role: .destructive) {
-                            manager.resetToInitial()
-                        }
-                        Button("Cancel", role: .cancel) { }
-                    } message: {
-                        Text("This will set the amount back to the default value.")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
+            content
+                .navigationTitle("BeforeZero")
+                .toolbar { settingsToolbar }
+                .padding()
+        }
+        .sheet(isPresented: $showingEntrySheet) { entrySheet }
+        .fullScreenCover(isPresented: onboardingBinding) { onboardingView }
+    }
+
+    // MARK: - Subviews
+
+    private var content: some View {
+        VStack(spacing: 24) {
+            header
+            actionButtons
+            recentActivity
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: 8) {
+            Text("Current amount")
+                .font(.headline)
+
+            Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
+                .font(.largeTitle)
+                .bold()
+        }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            Button {
+                entryMode = .expense
+                showingEntrySheet = true
+            } label: {
+                Label("Add expense", systemImage: "minus.circle")
             }
-            .padding()
-            .navigationTitle("BeforeZero")
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                NavigationLink {
-                                    SettingsView()
-                                } label: {
-                                    Image(systemName: "gearshape")
-                                }
-                                .accessibilityLabel("Settings")
-                            }
-                        }
-                        .sheet(isPresented: $showingEntrySheet) {
-                            AmountEntryView(mode: entryMode) { amount in
-                                guard let amount else { return } // cancel
-                                if entryMode == .expense { manager.addExpense(amount) }
-                                else { manager.addInput(amount) }
-                                showingEntrySheet = false
-                            }
-                        }
-            // Show the “first‑run” onboarding if no initial amount exists yet.
-            .fullScreenCover(isPresented: .constant(manager.initialAmount == nil)) {
-                FirstRunSetupView { amount in
-                    manager.setInitialAmount(amount)
+
+            Button {
+                entryMode = .input
+                showingEntrySheet = true
+            } label: {
+                Label("Add input", systemImage: "plus.circle")
+            }
+
+            Button {
+                showResetConfirm = true
+            } label: {
+                Label("Reset", systemImage: "arrow.clockwise")
+            }
+            .confirmationDialog("Confirm reset?", isPresented: $showResetConfirm, titleVisibility: .visible) {
+                Button("Reset amount", role: .destructive) {
+                    manager.resetToInitial()
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This will set the amount back to the default value.")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+    }
+
+    private var recentActivity: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Recent activity")
+                .font(.headline)
+
+            if lastFiveOperations.isEmpty {
+                Text("No operations yet.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(lastFiveOperations) { op in
+                    operationRow(op)
                 }
             }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func operationRow(_ op: Operation) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(op.label)
+                Text(op.date, style: .date)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(CurrencyFormatting.formatCurrency(op.amount, code: currencyCode))
+                .foregroundStyle(op.type == .expense ? .red : .green)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var settingsToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            NavigationLink {
+                SettingsView()
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .accessibilityLabel("Settings")
+        }
+    }
+
+    private var entrySheet: some View {
+        AmountEntryView(mode: entryMode) { result in
+            guard let (amount, label) = result else { return }
+            if entryMode == .expense {
+                manager.addExpense(amount, label: label)
+            } else {
+                manager.addInput(amount, label: label)
+            }
+            showingEntrySheet = false
+        }
+    }
+
+    // MARK: - Onboarding
+
+    private var onboardingBinding: Binding<Bool> {
+        Binding(
+            get: { manager.initialAmount == nil },
+            set: { _ in }
+        )
+    }
+
+    private var onboardingView: some View {
+        FirstRunSetupView { amount in
+            manager.setInitialAmount(amount)
         }
     }
 }

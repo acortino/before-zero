@@ -10,71 +10,99 @@ import Foundation
 /// Keys used in UserDefaults – keep them private to avoid collisions.
 private enum DefaultsKey: String {
     case initialAmount = "SimpleExpenseTracker.initialAmount"
-    case currentAmount = "SimpleExpenseTracker.currentAmount"
+    case operations = "SimpleExpenseTracker.operations"
 }
 
+
 /// A tiny service that owns all expense‑related logic.
+import Foundation
+
 final class ExpenseManager: ObservableObject {
 
-    // MARK: Public published properties (observed by SwiftUI)
-
-    /// The amount shown on the home screen.
     @Published private(set) var currentAmount: Double = 0
-
-    /// The amount that was first entered (used for “reset”). Nil until the user sets it.
     private(set) var initialAmount: Double? = nil
 
-    // MARK: Init – load persisted values
+    @Published private(set) var operations: [Operation] = []  // NEW (optional to show in UI)
 
     init() {
         loadFromDefaults()
+        recomputeCurrent()
     }
 
-    // MARK: Public API
-
-    /// Called once on first launch (or whenever the user wants to change the baseline).
     func setInitialAmount(_ amount: Double) {
         initialAmount = amount
-        currentAmount = amount
+        operations = []
+        recomputeCurrent()
         persist()
     }
 
-    /// Add an expense → subtract from the total.
-    func addExpense(_ amount: Double) {
-        guard amount >= 0 else { return }
-        currentAmount -= amount
+    func addExpense(_ amount: Double, label: String) {
+        guard amount > 0 else { return }
+        operations.insert(Operation(type: .expense, amount: amount, label: label), at: 0)
+        recomputeCurrent()
         persist()
     }
 
-    /// Add an income/input → increase the total.
-    func addInput(_ amount: Double) {
-        guard amount >= 0 else { return }
-        currentAmount += amount
+    func addInput(_ amount: Double, label: String) {
+        guard amount > 0 else { return }
+        operations.insert(Operation(type: .input, amount: amount, label: label), at: 0)
+        recomputeCurrent()
         persist()
     }
 
-    /// Reset back to the original amount saved on first launch.
     func resetToInitial() {
-        if let initial = initialAmount {
-            currentAmount = initial
-            persist()
-        }
+        guard initialAmount != nil else { return }
+        operations = []
+        recomputeCurrent()
+        persist()
     }
 
-    // MARK: Private persistence helpers
+    // MARK: - Private
+
+    private func recomputeCurrent() {
+        guard let initialAmount else {
+            currentAmount = 0
+            return
+        }
+
+        var total = initialAmount
+        for op in operations {
+            switch op.type {
+            case .expense: total -= op.amount
+            case .input: total += op.amount
+            }
+        }
+        currentAmount = total
+    }
 
     private func loadFromDefaults() {
         let defaults = UserDefaults.standard
+
         if let storedInitial = defaults.object(forKey: DefaultsKey.initialAmount.rawValue) as? Double {
             initialAmount = storedInitial
-            currentAmount = defaults.double(forKey: DefaultsKey.currentAmount.rawValue)
+        }
+
+        if let data = defaults.data(forKey: DefaultsKey.operations.rawValue) {
+            do {
+                operations = try JSONDecoder().decode([Operation].self, from: data)
+            } catch {
+                operations = []
+            }
         }
     }
 
     private func persist() {
-        guard let initial = initialAmount else { return }
         let defaults = UserDefaults.standard
-        defaults.set(initial, forKey: DefaultsKey.initialAmount.rawValue)
-        defaults.set(currentAmount, forKey: DefaultsKey.currentAmount.rawValue)
+
+        if let initialAmount {
+            defaults.set(initialAmount, forKey: DefaultsKey.initialAmount.rawValue)
+        }
+
+        do {
+            let data = try JSONEncoder().encode(operations)
+            defaults.set(data, forKey: DefaultsKey.operations.rawValue)
+        } catch {
+            // If encoding fails, don't crash; you could log in debug.
+        }
     }
 }
