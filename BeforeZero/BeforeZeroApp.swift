@@ -11,6 +11,9 @@ import SwiftData
 
 @main
 struct BeforeZeroApp: App {
+    @EnvironmentObject var manager: ExpenseManager
+    @AppStorage(AppTheme.Keys.theme) private var themeRaw: String = AppTheme.system.rawValue
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
 
@@ -27,6 +30,7 @@ struct BeforeZeroApp: App {
     var body: some Scene {
         WindowGroup {
             Homepage()
+                .preferredColorScheme((AppTheme(rawValue: themeRaw) ?? .system).preferredColorScheme)
         }
         .modelContainer(sharedModelContainer)
     }

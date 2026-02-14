@@ -7,59 +7,45 @@
 
 import SwiftUI
 
+import SwiftUI
+
 struct AmountEntryView: View {
     let mode: EntryMode
-    
+    var onDone: (Double?) -> Void  // nil = cancel
+
+    @Environment(\.dismiss) private var dismiss
     @State private var text = ""
-    var onDone: (Double) -> Void
+
+    @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
+    private var currencyCode: String { (AppCurrency(rawValue: currencyRaw) ?? .eur).code }
 
     private var parsedValue: Double? {
-        Double(text.replacingOccurrences(of: ",", with: "."))
+        CurrencyFormatting.parseUserNumber(text)
     }
 
     private var isValid: Bool {
-        guard let value = parsedValue else { return false }
-        return value > 0
-    }
-    
-    private func sanitize(_ input: String) -> String {
-        // Normalize decimal separator
-        let normalized = input.replacingOccurrences(of: ",", with: ".")
-
-        // Allow only digits and one dot
-        var result = ""
-        var hasDot = false
-        var decimalCount = 0
-
-        for char in normalized {
-            if char.isWholeNumber {
-                if hasDot {
-                    if decimalCount < 2 {
-                        result.append(char)
-                        decimalCount += 1
-                    }
-                } else {
-                    result.append(char)
-                }
-            } else if char == "." && !hasDot {
-                hasDot = true
-                result.append(char)
-            }
-        }
-
-        return result
+        guard let v = parsedValue else { return false }
+        return v > 0
     }
 
-    
+    private var preview: String {
+        guard let v = parsedValue else { return "—" }
+        return CurrencyFormatting.formatCurrency(v, code: currencyCode)
+    }
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text(mode == .expense ? "Expense amount" : "Income amount")) {
                     TextField("Enter amount", text: $text)
                         .keyboardType(.decimalPad)
-                        .onChange(of: text) { _,newValue in
-                            text = sanitize(newValue)
-                        }
+
+                    HStack {
+                        Text("Preview")
+                        Spacer()
+                        Text(preview)
+                            .foregroundStyle(.secondary)
+                    }
 
                     if !text.isEmpty && !isValid {
                         Text("Please enter a valid positive number")
@@ -72,16 +58,19 @@ struct AmountEntryView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        guard let value = parsedValue else { return }
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to:nil, from:nil, for:nil)
-                        if let value = Double(text) {
-                            onDone(value)
-                        }
+                        guard let v = parsedValue else { return }
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        onDone(v)
+                        dismiss()
                     }
                     .disabled(!isValid)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onDone(0) }   // close without changes
+                    Button("Cancel") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        onDone(nil)
+                        dismiss()
+                    }
                 }
             }
         }

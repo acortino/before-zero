@@ -11,6 +11,8 @@ import SwiftUI
 enum EntryMode { case expense, input }
 
 struct Homepage: View {
+    @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
+
     // The manager lives for the whole app lifetime.
         @StateObject private var manager = ExpenseManager()
 
@@ -18,16 +20,21 @@ struct Homepage: View {
         @State private var showingEntrySheet = false
         @State private var entryMode: EntryMode = .expense   // .expense or .input
         @State private var showResetConfirm = false
+    
+    private var currencyCode: String {
+        (AppCurrency(rawValue: currencyRaw) ?? .eur).code
+    }
 
-        var body: some View {
+    var body: some View {
+        NavigationStack {
             VStack(spacing: 30) {
                 Text("Current amount")
                     .font(.headline)
-
-                Text("\(manager.currentAmount, specifier: "%.2f") €")
+                
+                Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
                     .font(.largeTitle)
                     .bold()
-
+                
                 HStack(spacing: 20) {
                     Button(action: {
                         entryMode = .expense
@@ -37,7 +44,7 @@ struct Homepage: View {
                     }
                     .accessibilityLabel("Add expense")
                     .accessibilityHint("Opens a sheet to record a new expense")
-
+                    
                     Button(action: {
                         entryMode = .input
                         showingEntrySheet = true
@@ -46,7 +53,7 @@ struct Homepage: View {
                     }
                     .accessibilityLabel("Add input")
                     .accessibilityHint("Opens a sheet to record a new input")
-
+                    
                     Button {
                         showResetConfirm = true
                     } label: {
@@ -66,16 +73,25 @@ struct Homepage: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding()
-            .sheet(isPresented: $showingEntrySheet) {
-                AmountEntryView(mode: entryMode) { amount in
-                    if entryMode == .expense {
-                        manager.addExpense(amount)
-                    } else {
-                        manager.addInput(amount)
-                    }
-                    showingEntrySheet = false
-                }
-            }
+            .navigationTitle("BeforeZero")
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                NavigationLink {
+                                    SettingsView()
+                                } label: {
+                                    Image(systemName: "gearshape")
+                                }
+                                .accessibilityLabel("Settings")
+                            }
+                        }
+                        .sheet(isPresented: $showingEntrySheet) {
+                            AmountEntryView(mode: entryMode) { amount in
+                                guard let amount else { return } // cancel
+                                if entryMode == .expense { manager.addExpense(amount) }
+                                else { manager.addInput(amount) }
+                                showingEntrySheet = false
+                            }
+                        }
             // Show the “first‑run” onboarding if no initial amount exists yet.
             .fullScreenCover(isPresented: .constant(manager.initialAmount == nil)) {
                 FirstRunSetupView { amount in
@@ -83,6 +99,7 @@ struct Homepage: View {
                 }
             }
         }
+    }
 }
 
 #Preview {
