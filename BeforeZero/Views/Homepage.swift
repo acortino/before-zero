@@ -12,7 +12,7 @@ enum EntryMode { case expense, input }
 struct Homepage: View {
     @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
 
-    @StateObject private var manager = ExpenseManager()
+    @EnvironmentObject var manager: ExpenseManager
 
     @State private var showingEntrySheet = false
     @State private var entryMode: EntryMode = .expense
@@ -166,4 +166,5 @@ struct Homepage: View {
 
 #Preview {
     Homepage()
+        .environmentObject(ExpenseManager())
 }

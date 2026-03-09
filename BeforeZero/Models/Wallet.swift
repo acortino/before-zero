@@ -20,9 +20,8 @@ import Foundation
 final class ExpenseManager: ObservableObject {
 
     @Published private(set) var currentAmount: Double = 0
-    private(set) var initialAmount: Double? = nil
-
-    @Published private(set) var operations: [Operation] = []  // NEW (optional to show in UI)
+    @Published private(set) var initialAmount: Double? = nil
+    @Published private(set) var operations: [Operation] = [] 
 
     init() {
         loadFromDefaults()
@@ -96,6 +95,8 @@ final class ExpenseManager: ObservableObject {
 
         if let initialAmount {
             defaults.set(initialAmount, forKey: DefaultsKey.initialAmount.rawValue)
+        } else {
+            defaults.removeObject(forKey: DefaultsKey.initialAmount.rawValue)
         }
 
         do {
@@ -105,4 +106,16 @@ final class ExpenseManager: ObservableObject {
             // If encoding fails, don't crash; you could log in debug.
         }
     }
+    
+    func eraseAllData() {
+        let defaults = UserDefaults.standard
+
+        defaults.removeObject(forKey: DefaultsKey.initialAmount.rawValue)
+        defaults.removeObject(forKey: DefaultsKey.operations.rawValue)
+
+        initialAmount = nil
+        operations = []
+        currentAmount = 0
+    }
+    
 }
