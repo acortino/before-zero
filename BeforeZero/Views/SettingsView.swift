@@ -45,7 +45,18 @@ struct SettingsView: View {
                     }
                 }
             }
-            
+            Section("Budget setup") {
+                NavigationLink {
+                    RecurringItemsEditorView()
+                } label: {
+                    HStack {
+                        Text("Edit recurring incomes & expenses")
+                        Spacer()
+                        Text(CurrencyFormatting.formatCurrency(expenseManager.initialAmount, code: (AppCurrency(rawValue: currencyRaw) ?? .eur).code))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             Section("Data") {
                            Button(role: .destructive) {
                                showEraseConfirmation = true

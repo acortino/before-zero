@@ -8,74 +8,141 @@
 import SwiftUI
 
 struct FirstRunSetupView: View {
-    @State private var text = ""
-    var onComplete: (Double) -> Void
+    @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
 
-    private var parsedValue: Double? {
-        Double(text.replacingOccurrences(of: ",", with: "."))
+    @State private var items: [RecurringItem] = []
+
+    var onComplete: ([RecurringItem]) -> Void
+
+    private var currencyCode: String {
+        (AppCurrency(rawValue: currencyRaw) ?? .eur).code
     }
 
-    private var isValid: Bool {
-        guard let value = parsedValue else { return false }
-        return value > 0
+    private var incomeIndices: [Int] {
+        items.indices.filter { items[$0].type == .income }
     }
 
-    private func sanitize(_ input: String) -> String {
-        // Normalize decimal separator
-        let normalized = input.replacingOccurrences(of: ",", with: ".")
+    private var expenseIndices: [Int] {
+        items.indices.filter { items[$0].type == .expense }
+    }
 
-        // Allow only digits and one dot
-        var result = ""
-        var hasDot = false
-        var decimalCount = 0
-
-        for char in normalized {
-            if char.isWholeNumber {
-                if hasDot {
-                    if decimalCount < 2 {
-                        result.append(char)
-                        decimalCount += 1
-                    }
-                } else {
-                    result.append(char)
-                }
-            } else if char == "." && !hasDot {
-                hasDot = true
-                result.append(char)
-            }
+    private var cleanedItems: [RecurringItem] {
+        items.filter {
+            !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.amount > 0
         }
-
-        return result
     }
-    
+
+    private var totalIncome: Double {
+        cleanedItems
+            .filter { $0.type == .income }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var totalExpense: Double {
+        cleanedItems
+            .filter { $0.type == .expense }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var projectedAmount: Double {
+        totalIncome - totalExpense
+    }
+
+    private var canStart: Bool {
+        !cleanedItems.isEmpty
+    }
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                Section(header: Text("Initial amount")) {
-                    TextField("Enter starting amount", text: $text)
-                        .keyboardType(.decimalPad)
-                        .onChange(of: text) { _,newValue in
-                            text = sanitize(newValue)
+                Section("Incomes") {
+                    if incomeIndices.isEmpty {
+                        Text("Add your salary or any recurring income.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(incomeIndices, id: \.self) { index in
+                            recurringItemRow(for: index)
                         }
-                    
-                    if !text.isEmpty && !isValid {
-                        Text("Please enter a valid positive number")
-                            .font(.caption)
-                            .foregroundColor(.red)
                     }
+
+                    Button {
+                        items.append(
+                            RecurringItem(type: .income, label: "", amount: 0)
+                        )
+                    } label: {
+                        Label("Add income", systemImage: "plus.circle")
+                    }
+                }
+
+                Section("Expenses") {
+                    if expenseIndices.isEmpty {
+                        Text("Add your rent, insurance, subscriptions, etc.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(expenseIndices, id: \.self) { index in
+                            recurringItemRow(for: index)
+                        }
+                    }
+
+                    Button {
+                        items.append(
+                            RecurringItem(type: .expense, label: "", amount: 0)
+                        )
+                    } label: {
+                        Label("Add expense", systemImage: "minus.circle")
+                    }
+                }
+
+                Section("Summary") {
+                    summaryRow(title: "Total incomes", amount: totalIncome, style: .green)
+                    summaryRow(title: "Total expenses", amount: totalExpense, style: .red)
+                    summaryRow(title: "Base monthly amount", amount: projectedAmount, style: .primary)
                 }
             }
             .navigationTitle("Welcome")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Start") {
-                        guard let value = parsedValue else { return }
-                        onComplete(value)
+                        onComplete(cleanedItems)
                     }
-                    .disabled(!isValid)
+                    .disabled(!canStart)
                 }
             }
         }
     }
-}
 
+    // MARK: - Components
+
+    private func recurringItemRow(for index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                TextField("Label", text: $items[index].label)
+
+                Button(role: .destructive) {
+                    items.remove(at: index)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+            }
+
+            TextField(
+                "Amount",
+                value: $items[index].amount,
+                format: .number.precision(.fractionLength(0...2))
+            )
+            .keyboardType(.decimalPad)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func summaryRow(title: String, amount: Double, style: Color) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(CurrencyFormatting.formatCurrency(amount, code: currencyCode))
+                .foregroundStyle(style)
+                .bold()
+        }
+    }
+}

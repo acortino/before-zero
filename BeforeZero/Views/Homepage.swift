@@ -77,7 +77,7 @@ struct Homepage: View {
             Button {
                 showResetConfirm = true
             } label: {
-                Label("Reset", systemImage: "arrow.clockwise")
+                Label("Start a new month", systemImage: "arrow.clockwise")
             }
             .confirmationDialog("Confirm reset?", isPresented: $showResetConfirm, titleVisibility: .visible) {
                 Button("Reset amount", role: .destructive) {
@@ -152,16 +152,16 @@ struct Homepage: View {
 
     private var onboardingBinding: Binding<Bool> {
         Binding(
-            get: { manager.initialAmount == nil },
+            get: { !manager.hasCompletedSetup },
             set: { _ in }
         )
     }
-
+    
     private var onboardingView: some View {
-        FirstRunSetupView { amount in
-            manager.setInitialAmount(amount)
-        }
-    }
+          FirstRunSetupView { items in
+              manager.setRecurringItems(items)
+          }
+      }
 }
 
 #Preview {

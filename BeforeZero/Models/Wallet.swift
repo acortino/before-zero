@@ -7,30 +7,61 @@
 
 import Foundation
 
-/// Keys used in UserDefaults – keep them private to avoid collisions.
 private enum DefaultsKey: String {
-    case initialAmount = "SimpleExpenseTracker.initialAmount"
+    case recurringItems = "SimpleExpenseTracker.recurringItems"
     case operations = "SimpleExpenseTracker.operations"
 }
 
-
-/// A tiny service that owns all expense‑related logic.
-import Foundation
-
 final class ExpenseManager: ObservableObject {
 
+    @Published private(set) var recurringItems: [RecurringItem] = []
     @Published private(set) var currentAmount: Double = 0
-    @Published private(set) var initialAmount: Double? = nil
-    @Published private(set) var operations: [Operation] = [] 
+    @Published private(set) var operations: [Operation] = []
+
+    var initialAmount: Double {
+        recurringItems.reduce(0) { partial, item in
+            switch item.type {
+            case .income:
+                return partial + item.amount
+            case .expense:
+                return partial - item.amount
+            }
+        }
+    }
+
+    var hasCompletedSetup: Bool {
+        !recurringItems.isEmpty
+    }
 
     init() {
         loadFromDefaults()
         recomputeCurrent()
     }
 
-    func setInitialAmount(_ amount: Double) {
-        initialAmount = amount
-        operations = []
+    func setRecurringItems(_ items: [RecurringItem]) {
+        recurringItems = items
+        recomputeCurrent()
+        persist()
+    }
+
+    func addRecurringItem(type: RecurringItemType, label: String, amount: Double) {
+        guard amount > 0, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        recurringItems.append(
+            RecurringItem(type: type, label: label.trimmingCharacters(in: .whitespacesAndNewlines), amount: amount)
+        )
+        recomputeCurrent()
+        persist()
+    }
+
+    func updateRecurringItem(_ updated: RecurringItem) {
+        guard let index = recurringItems.firstIndex(where: { $0.id == updated.id }) else { return }
+        recurringItems[index] = updated
+        recomputeCurrent()
+        persist()
+    }
+
+    func deleteRecurringItems(at offsets: IndexSet) {
+        recurringItems.remove(atOffsets: offsets)
         recomputeCurrent()
         persist()
     }
@@ -50,35 +81,46 @@ final class ExpenseManager: ObservableObject {
     }
 
     func resetToInitial() {
-        guard initialAmount != nil else { return }
+        guard hasCompletedSetup else { return }
         operations = []
         recomputeCurrent()
         persist()
     }
 
-    // MARK: - Private
+    func eraseAllData() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: DefaultsKey.recurringItems.rawValue)
+        defaults.removeObject(forKey: DefaultsKey.operations.rawValue)
+
+        recurringItems = []
+        operations = []
+        currentAmount = 0
+    }
 
     private func recomputeCurrent() {
-        guard let initialAmount else {
-            currentAmount = 0
-            return
-        }
-
         var total = initialAmount
+
         for op in operations {
             switch op.type {
-            case .expense: total -= op.amount
-            case .input: total += op.amount
+            case .expense:
+                total -= op.amount
+            case .input:
+                total += op.amount
             }
         }
+
         currentAmount = total
     }
 
     private func loadFromDefaults() {
         let defaults = UserDefaults.standard
 
-        if let storedInitial = defaults.object(forKey: DefaultsKey.initialAmount.rawValue) as? Double {
-            initialAmount = storedInitial
+        if let data = defaults.data(forKey: DefaultsKey.recurringItems.rawValue) {
+            do {
+                recurringItems = try JSONDecoder().decode([RecurringItem].self, from: data)
+            } catch {
+                recurringItems = []
+            }
         }
 
         if let data = defaults.data(forKey: DefaultsKey.operations.rawValue) {
@@ -93,29 +135,18 @@ final class ExpenseManager: ObservableObject {
     private func persist() {
         let defaults = UserDefaults.standard
 
-        if let initialAmount {
-            defaults.set(initialAmount, forKey: DefaultsKey.initialAmount.rawValue)
-        } else {
-            defaults.removeObject(forKey: DefaultsKey.initialAmount.rawValue)
+        do {
+            let recurringData = try JSONEncoder().encode(recurringItems)
+            defaults.set(recurringData, forKey: DefaultsKey.recurringItems.rawValue)
+        } catch {
+            defaults.removeObject(forKey: DefaultsKey.recurringItems.rawValue)
         }
 
         do {
-            let data = try JSONEncoder().encode(operations)
-            defaults.set(data, forKey: DefaultsKey.operations.rawValue)
+            let operationsData = try JSONEncoder().encode(operations)
+            defaults.set(operationsData, forKey: DefaultsKey.operations.rawValue)
         } catch {
-            // If encoding fails, don't crash; you could log in debug.
+            defaults.removeObject(forKey: DefaultsKey.operations.rawValue)
         }
     }
-    
-    func eraseAllData() {
-        let defaults = UserDefaults.standard
-
-        defaults.removeObject(forKey: DefaultsKey.initialAmount.rawValue)
-        defaults.removeObject(forKey: DefaultsKey.operations.rawValue)
-
-        initialAmount = nil
-        operations = []
-        currentAmount = 0
-    }
-    
 }
