@@ -17,6 +17,7 @@ struct Homepage: View {
     @State private var showingEntrySheet = false
     @State private var entryMode: EntryMode = .expense
     @State private var showResetConfirm = false
+    @State private var showCalculationInfo = false
 
     private var currencyCode: String {
         (AppCurrency(rawValue: currencyRaw) ?? .eur).code
@@ -24,6 +25,29 @@ struct Homepage: View {
 
     private var lastFiveOperations: [Operation] {
         Array(manager.operations.prefix(5))
+    }
+    
+    private var totalManualInputs: Double {
+        manager.operations
+            .filter { $0.type == .input }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private var totalManualExpenses: Double {
+        manager.operations
+            .filter { $0.type == .expense }
+            .reduce(0) { $0 + $1.amount }
+    }
+    
+    private var calculationExplanation: String {
+        """
+        Current amount = Base monthly amount + Manual inputs - Manual expenses
+
+        Base monthly amount: \(CurrencyFormatting.formatCurrency(manager.initialAmount, code: currencyCode))
+        Manual inputs: \(CurrencyFormatting.formatCurrency(totalManualInputs, code: currencyCode))
+        Manual expenses: \(CurrencyFormatting.formatCurrency(totalManualExpenses, code: currencyCode))
+        Current amount: \(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
+        """
     }
 
     var body: some View {
@@ -35,6 +59,11 @@ struct Homepage: View {
         }
         .sheet(isPresented: $showingEntrySheet) { entrySheet }
         .fullScreenCover(isPresented: onboardingBinding) { onboardingView }
+        .alert("Calculation details", isPresented: $showCalculationInfo) {
+                   Button("OK", role: .cancel) { }
+               } message: {
+                   Text(calculationExplanation)
+               }
     }
 
     // MARK: - Subviews
@@ -48,14 +77,46 @@ struct Homepage: View {
     }
 
     private var header: some View {
-        VStack(spacing: 8) {
-            Text("Current amount")
-                .font(.headline)
+        VStack(spacing: 16) {
 
-            Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
-                .font(.largeTitle)
-                .bold()
+            // MAIN AMOUNT
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+
+                Text("/")
+                    .foregroundStyle(.secondary)
+
+                Text(CurrencyFormatting.formatCurrency(manager.initialAmount, code: currencyCode))
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    showCalculationInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // PROGRESS BAR
+            GeometryReader { geo in
+                let progress = max(0, min(manager.currentAmount / max(manager.initialAmount, 1), 1))
+
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 10)
+
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(progressColor(progress))
+                        .frame(width: geo.size.width * progress, height: 10)
+                }
+            }
+            .frame(height: 10)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var actionButtons: some View {
@@ -162,6 +223,17 @@ struct Homepage: View {
               manager.setRecurringItems(items)
           }
       }
+    
+    private func progressColor(_ progress: Double) -> Color {
+        switch progress {
+        case 0.5...:
+            return .green
+        case 0.2..<0.5:
+            return .orange
+        default:
+            return .red
+        }
+    }
 }
 
 #Preview {
