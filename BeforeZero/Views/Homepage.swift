@@ -78,18 +78,24 @@ struct Homepage: View {
 
     private var header: some View {
         VStack(spacing: 16) {
-
-            // MAIN AMOUNT
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                NavigationLink {
+                    MonthDetailsView()
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
 
-                Text("/")
-                    .foregroundStyle(.secondary)
+                        Text("/")
+                            .foregroundStyle(.secondary)
 
-                Text(CurrencyFormatting.formatCurrency(manager.initialAmount, code: currencyCode))
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
+                        Text(CurrencyFormatting.formatCurrency(manager.initialAmount, code: currencyCode))
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
 
                 Button {
                     showCalculationInfo = true
@@ -100,7 +106,6 @@ struct Homepage: View {
                 .buttonStyle(.plain)
             }
 
-            // PROGRESS BAR
             GeometryReader { geo in
                 let progress = max(0, min(manager.currentAmount / max(manager.initialAmount, 1), 1))
 
@@ -118,7 +123,7 @@ struct Homepage: View {
         }
         .frame(maxWidth: .infinity)
     }
-
+    
     private var actionButtons: some View {
         HStack(spacing: 12) {
             Button {
