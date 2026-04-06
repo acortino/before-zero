@@ -34,6 +34,7 @@ struct MonthDetailsView: View {
 
     @State private var selectedFilter: OperationFilter = .all
     @State private var selectedSort: OperationSort = .date
+    @State private var editingOperation: Operation?
 
     private var currencyCode: String {
         (AppCurrency(rawValue: currencyRaw) ?? .eur).code
@@ -89,6 +90,24 @@ struct MonthDetailsView: View {
         }
         .navigationTitle("Current month")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $editingOperation) { operation in
+            AmountEntryView(
+                mode: operation.type == .expense ? .expense : .input,
+                existingOperation: operation
+            ) { result in
+                guard let (amount, label) = result else { return }
+
+                let updated = Operation(
+                    id: operation.id,
+                    type: operation.type,
+                    amount: amount,
+                    label: label,
+                    date: operation.date
+                )
+
+                manager.updateOperation(updated)
+            }
+        }
     }
 
     private var summarySection: some View {
@@ -160,9 +179,22 @@ struct MonthDetailsView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(op.type == .expense ? .red : .green)
             }
-
         }
         .padding(.vertical, 6)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                manager.deleteOperation(op)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+
+            Button {
+                editingOperation = op
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.blue)
+        }
     }
 
     private func signedAmountString(for op: Operation) -> String {

@@ -149,4 +149,17 @@ final class ExpenseManager: ObservableObject {
             defaults.removeObject(forKey: DefaultsKey.operations.rawValue)
         }
     }
+    
+    func updateOperation(_ updated: Operation) {
+        guard let index = operations.firstIndex(where: { $0.id == updated.id }) else { return }
+        operations[index] = updated
+        recomputeCurrent()
+        persist()
+    }
+
+    func deleteOperation(_ operation: Operation) {
+        operations.removeAll { $0.id == operation.id }
+        recomputeCurrent()
+        persist()
+    }
 }
