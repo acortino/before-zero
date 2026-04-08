@@ -4,16 +4,28 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct RecurringItemsEditorView: View {
-    @EnvironmentObject var expenseManager: ExpenseManager
+    @Environment(\.modelContext) private var modelContext
     @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
     @Environment(\.dismiss) private var dismiss
 
-    @State private var draftItems: [RecurringItem] = []
+    @Query(sort: [
+        SortDescriptor(\RecurringTemplateItem.sortOrder, order: .forward),
+        SortDescriptor(\RecurringTemplateItem.createdAt, order: .forward)
+    ])
+    private var recurringTemplates: [RecurringTemplateItem]
+
+    @State private var draftItems: [RecurringTemplateDraft] = []
+    @State private var errorMessage: String?
 
     private var currencyCode: String {
         (AppCurrency(rawValue: currencyRaw) ?? .eur).code
+    }
+
+    private var repository: BudgetRepository {
+        BudgetRepository(context: modelContext)
     }
 
     private var incomeIndices: [Int] {
@@ -24,7 +36,7 @@ struct RecurringItemsEditorView: View {
         draftItems.indices.filter { draftItems[$0].type == .expense }
     }
 
-    private var cleanedItems: [RecurringItem] {
+    private var cleanedItems: [RecurringTemplateDraft] {
         draftItems.filter {
             !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.amount > 0
         }
@@ -60,7 +72,7 @@ struct RecurringItemsEditorView: View {
 
                 Button {
                     draftItems.append(
-                        RecurringItem(type: .income, label: "", amount: 0)
+                        RecurringTemplateDraft(type: .income, label: "", amount: 0)
                     )
                 } label: {
                     Label("Add income", systemImage: "plus.circle")
@@ -79,7 +91,7 @@ struct RecurringItemsEditorView: View {
 
                 Button {
                     draftItems.append(
-                        RecurringItem(type: .expense, label: "", amount: 0)
+                        RecurringTemplateDraft(type: .expense, label: "", amount: 0)
                     )
                 } label: {
                     Label("Add expense", systemImage: "minus.circle")
@@ -96,17 +108,28 @@ struct RecurringItemsEditorView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Save") {
-                    expenseManager.setRecurringItems(cleanedItems)
-                    dismiss()
+                    do {
+                        try repository.replaceRecurringTemplateItems(cleanedItems)
+                        dismiss()
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
                 }
             }
         }
         .onAppear {
-            draftItems = expenseManager.recurringItems
+            if draftItems.isEmpty {
+                draftItems = recurringTemplates.map(RecurringTemplateDraft.init(template:))
+            }
+        }
+        .alert("Couldn’t Save Changes", isPresented: errorBinding) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "Something went wrong.")
         }
     }
-
-    // MARK: - Components
 
     private func recurringItemEditor(for index: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -139,5 +162,16 @@ struct RecurringItemsEditorView: View {
                 .foregroundStyle(style)
                 .bold()
         }
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    errorMessage = nil
+                }
+            }
+        )
     }
 }

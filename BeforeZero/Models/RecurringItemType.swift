@@ -21,17 +21,3 @@ enum RecurringItemType: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
-
-struct RecurringItem: Identifiable, Codable, Equatable {
-    let id: UUID
-    var type: RecurringItemType
-    var label: String
-    var amount: Double
-
-    init(id: UUID = UUID(), type: RecurringItemType, label: String, amount: Double) {
-        self.id = id
-        self.type = type
-        self.label = label
-        self.amount = amount
-    }
-}

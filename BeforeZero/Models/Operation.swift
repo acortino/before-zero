@@ -7,23 +7,27 @@
 
 import Foundation
 
-enum OperationType: String, Codable {
+enum OperationType: String, Codable, CaseIterable, Identifiable {
     case expense
     case input
-}
 
-struct Operation: Identifiable, Codable {
-    let id: UUID
-    let date: Date
-    let type: OperationType
-    let amount: Double
-    let label: String
+    var id: String { rawValue }
 
-    init(id: UUID = UUID(), type: OperationType, amount: Double, label: String, date: Date = Date()) {
-        self.id = id
-        self.date = date
-        self.type = type
-        self.amount = amount
-        self.label = label
+    var label: String {
+        switch self {
+        case .expense:
+            return "Expense"
+        case .input:
+            return "Input"
+        }
+    }
+
+    var signedMultiplier: Double {
+        switch self {
+        case .expense:
+            return -1
+        case .input:
+            return 1
+        }
     }
 }

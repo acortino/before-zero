@@ -9,7 +9,7 @@ import SwiftUI
 
 struct AmountEntryView: View {
     let mode: EntryMode
-    let existingOperation: Operation?
+    let existingOperation: BudgetOperation?
     var onDone: ((Double, String)?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -19,7 +19,7 @@ struct AmountEntryView: View {
 
     init(
         mode: EntryMode,
-        existingOperation: Operation? = nil,
+        existingOperation: BudgetOperation? = nil,
         onDone: @escaping ((Double, String)?) -> Void
     ) {
         self.mode = mode
@@ -42,7 +42,7 @@ struct AmountEntryView: View {
     }
 
     private var isValid: Bool {
-        guard let v = parsedValue, v > 0 else { return false }
+        guard let value = parsedValue, value > 0 else { return false }
         return !labelText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -65,7 +65,7 @@ struct AmountEntryView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text(sectionTitle)) {
+                Section(sectionTitle) {
                     TextField("Label (e.g. Groceries)", text: $labelText)
 
                     TextField("Amount", text: $amountText)
@@ -74,7 +74,7 @@ struct AmountEntryView: View {
                     if !amountText.isEmpty && parsedValue == nil {
                         Text("Please enter a valid number")
                             .font(.caption)
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                     }
                 }
             }
@@ -82,9 +82,9 @@ struct AmountEntryView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(saveButtonTitle) {
-                        guard let v = parsedValue else { return }
-                        let label = labelText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onDone((v, label))
+                        guard let value = parsedValue else { return }
+                        let trimmedLabel = labelText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onDone((value, trimmedLabel))
                         dismiss()
                     }
                     .disabled(!isValid)

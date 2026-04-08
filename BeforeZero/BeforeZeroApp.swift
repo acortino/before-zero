@@ -11,12 +11,13 @@ import SwiftData
 
 @main
 struct BeforeZeroApp: App {
-    @StateObject private var manager = ExpenseManager()
     @AppStorage(AppTheme.Keys.theme) private var themeRaw: String = AppTheme.system.rawValue
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-
+            RecurringTemplateItem.self,
+            BudgetMonth.self,
+            BudgetOperation.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -30,7 +31,6 @@ struct BeforeZeroApp: App {
     var body: some Scene {
         WindowGroup {
             Homepage()
-                .environmentObject(manager)
                 .preferredColorScheme((AppTheme(rawValue: themeRaw) ?? .system).preferredColorScheme)
         }
         .modelContainer(sharedModelContainer)

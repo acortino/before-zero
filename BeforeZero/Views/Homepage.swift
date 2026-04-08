@@ -6,68 +6,161 @@
 //
 
 import SwiftUI
+import SwiftData
 
-enum EntryMode { case expense, input }
+enum EntryMode {
+    case expense
+    case input
+}
 
 struct Homepage: View {
     @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
 
-    @EnvironmentObject var manager: ExpenseManager
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+
+    @Query(sort: [
+        SortDescriptor(\RecurringTemplateItem.sortOrder, order: .forward),
+        SortDescriptor(\RecurringTemplateItem.createdAt, order: .forward)
+    ])
+    private var recurringTemplates: [RecurringTemplateItem]
+
+    @Query(sort: [
+        SortDescriptor(\BudgetMonth.yearMonthKey, order: .reverse)
+    ])
+    private var months: [BudgetMonth]
 
     @State private var showingEntrySheet = false
     @State private var entryMode: EntryMode = .expense
-    @State private var showResetConfirm = false
     @State private var showCalculationInfo = false
+    @State private var errorMessage: String?
+    @State private var showOnboarding = false
+    @State private var currentOperations: [BudgetOperation] = []
+    @State private var path: [AppRoute] = []
 
     private var currencyCode: String {
         (AppCurrency(rawValue: currencyRaw) ?? .eur).code
     }
 
-    private var lastFiveOperations: [Operation] {
-        Array(manager.operations.prefix(5))
+    private var repository: BudgetRepository {
+        BudgetRepository(context: modelContext)
     }
-    
+
+    private var activeTemplateCount: Int {
+        recurringTemplates.filter { $0.isActive }.count
+    }
+
+    private var currentMonthKey: Int {
+        Calendar.autoupdatingCurrent.budgetMonthKey(for: .now)
+    }
+
+    private var currentMonth: BudgetMonth? {
+        months.first { $0.yearMonthKey == currentMonthKey }
+    }
+
+    private func reloadCurrentOperations() {
+        guard let currentMonth else {
+            currentOperations = []
+            return
+        }
+
+        do {
+            currentOperations = try repository.operations(
+                forMonthKey: currentMonth.yearMonthKey,
+                filter: .all,
+                sort: .dateDescending
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            currentOperations = []
+        }
+    }
+
+    private var lastFiveOperations: [BudgetOperation] {
+        Array(currentOperations.prefix(5))
+    }
+
+    private var baselineAmount: Double {
+        currentMonth?.baselineAmount ?? 0
+    }
+
+    private var currentAmount: Double {
+        guard let currentMonth else { return 0 }
+        return repository.currentAmount(
+            baselineAmount: currentMonth.baselineAmount,
+            operations: currentOperations
+        )
+    }
+
     private var totalManualInputs: Double {
-        manager.operations
+        currentOperations
             .filter { $0.type == .input }
             .reduce(0) { $0 + $1.amount }
     }
 
     private var totalManualExpenses: Double {
-        manager.operations
+        currentOperations
             .filter { $0.type == .expense }
             .reduce(0) { $0 + $1.amount }
     }
-    
+
     private var calculationExplanation: String {
         """
         Current amount = Base monthly amount + Manual inputs - Manual expenses
 
-        Base monthly amount: \(CurrencyFormatting.formatCurrency(manager.initialAmount, code: currencyCode))
+        Base monthly amount: \(CurrencyFormatting.formatCurrency(baselineAmount, code: currencyCode))
         Manual inputs: \(CurrencyFormatting.formatCurrency(totalManualInputs, code: currencyCode))
         Manual expenses: \(CurrencyFormatting.formatCurrency(totalManualExpenses, code: currencyCode))
-        Current amount: \(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
+        Current amount: \(CurrencyFormatting.formatCurrency(currentAmount, code: currencyCode))
         """
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             content
                 .navigationTitle("BeforeZero")
                 .toolbar { settingsToolbar }
+                .navigationDestination(for: AppRoute.self) { route in
+                    switch route {
+                    case .archive:
+                        MonthArchiveView()
+                    case .year(let year):
+                        YearMonthsView(year: year)
+                    case .month(let key):
+                        MonthDetailsView(monthKey: key)
+                    case .settings:
+                        SettingsView()
+                    }
+                }
                 .padding()
         }
         .sheet(isPresented: $showingEntrySheet) { entrySheet }
-        .fullScreenCover(isPresented: onboardingBinding) { onboardingView }
+        .fullScreenCover(isPresented: $showOnboarding) { onboardingView }
+        .task {
+            refreshBudgetState()
+        }
+        .onChange(of: activeTemplateCount) { _, _ in
+            refreshBudgetState()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                refreshBudgetState()
+            }
+        }
         .alert("Calculation details", isPresented: $showCalculationInfo) {
-                   Button("OK", role: .cancel) { }
-               } message: {
-                   Text(calculationExplanation)
-               }
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(calculationExplanation)
+        }
+        .alert("Couldn’t Save Changes", isPresented: errorBinding) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "Something went wrong.")
+        }
     }
-
-    // MARK: - Subviews
-
+    
     private var content: some View {
         VStack(spacing: 24) {
             header
@@ -79,35 +172,34 @@ struct Homepage: View {
     private var header: some View {
         VStack(spacing: 16) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                NavigationLink {
-                    MonthDetailsView()
-                } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(CurrencyFormatting.formatCurrency(manager.currentAmount, code: currencyCode))
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
-
-                        Text("/")
-                            .foregroundStyle(.secondary)
-
-                        Text(CurrencyFormatting.formatCurrency(manager.initialAmount, code: currencyCode))
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
+                Group {
+                    if let currentMonth {
+                        NavigationLink {
+                            MonthDetailsView(monthKey: currentMonth.yearMonthKey)
+                        } label: {
+                            amountHeader
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        amountHeader
                     }
                 }
                 .buttonStyle(.plain)
 
-                Button {
-                    showCalculationInfo = true
-                } label: {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.secondary)
+                if currentMonth != nil {
+                    Button {
+                        showCalculationInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             GeometryReader { geo in
-                let progress = max(0, min(manager.currentAmount / max(manager.initialAmount, 1), 1))
+                let progress = max(0, min(currentAmount / max(baselineAmount, 1), 1))
 
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 8)
@@ -123,7 +215,22 @@ struct Homepage: View {
         }
         .frame(maxWidth: .infinity)
     }
-    
+
+    private var amountHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(CurrencyFormatting.formatCurrency(currentAmount, code: currencyCode))
+                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+
+            Text("/")
+                .foregroundStyle(.secondary)
+
+            Text(CurrencyFormatting.formatCurrency(baselineAmount, code: currencyCode))
+                .font(.title3)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var actionButtons: some View {
         HStack(spacing: 12) {
             Button {
@@ -132,6 +239,7 @@ struct Homepage: View {
             } label: {
                 Label("Add expense", systemImage: "minus.circle")
             }
+            .disabled(currentMonth == nil)
 
             Button {
                 entryMode = .input
@@ -139,63 +247,53 @@ struct Homepage: View {
             } label: {
                 Label("Add input", systemImage: "plus.circle")
             }
-
-            Button {
-                showResetConfirm = true
-            } label: {
-                Label("Start a new month", systemImage: "arrow.clockwise")
-            }
-            .confirmationDialog("Confirm reset?", isPresented: $showResetConfirm, titleVisibility: .visible) {
-                Button("Reset amount", role: .destructive) {
-                    manager.resetToInitial()
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("This will set the amount back to the default value.")
-            }
+            .disabled(currentMonth == nil)
         }
         .buttonStyle(.borderedProminent)
     }
 
     private var recentActivity: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Recent activity")
+            Text(currentMonth?.displayTitle ?? "Current month")
                 .font(.headline)
 
             if lastFiveOperations.isEmpty {
                 Text("No operations yet.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(lastFiveOperations) { op in
-                    operationRow(op)
+                ForEach(lastFiveOperations) { operation in
+                    operationRow(operation)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func operationRow(_ op: Operation) -> some View {
+    private func operationRow(_ operation: BudgetOperation) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(op.label)
-                Text(op.date, style: .date)
+                Text(operation.label)
+                Text(operation.date, format: .dateTime.day().month().year())
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Text(CurrencyFormatting.formatCurrency(op.amount, code: currencyCode))
-                .foregroundStyle(op.type == .expense ? .red : .green)
+            Text(signedAmountString(for: operation))
+                .foregroundStyle(operation.type == .expense ? .red : .green)
         }
         .padding(.vertical, 6)
     }
 
     private var settingsToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            NavigationLink {
-                SettingsView()
-            } label: {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            NavigationLink(value: AppRoute.archive) {
+                Image(systemName: "calendar")
+            }
+            .accessibilityLabel("Browse months")
+
+            NavigationLink(value: AppRoute.settings) {
                 Image(systemName: "gearshape")
             }
             .accessibilityLabel("Settings")
@@ -204,31 +302,68 @@ struct Homepage: View {
 
     private var entrySheet: some View {
         AmountEntryView(mode: entryMode) { result in
-            guard let (amount, label) = result else { return }
-            if entryMode == .expense {
-                manager.addExpense(amount, label: label)
-            } else {
-                manager.addInput(amount, label: label)
+            guard let currentMonth, let (amount, label) = result else { return }
+
+            do {
+                try repository.addOperation(
+                    to: currentMonth,
+                    type: entryMode == .expense ? .expense : .input,
+                    amount: amount,
+                    label: label,
+                    date: .now
+                )
+                reloadCurrentOperations()
+                showingEntrySheet = false
+            } catch {
+                errorMessage = error.localizedDescription
             }
-            showingEntrySheet = false
         }
     }
 
-    // MARK: - Onboarding
+    private var onboardingView: some View {
+        FirstRunSetupView { items in
+            do {
+                _ = try repository.completeInitialSetup(with: items, for: .now)
+                reloadCurrentOperations()
+                showOnboarding = false
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
 
-    private var onboardingBinding: Binding<Bool> {
+    private var errorBinding: Binding<Bool> {
         Binding(
-            get: { !manager.hasCompletedSetup },
-            set: { _ in }
+            get: { errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    errorMessage = nil
+                }
+            }
         )
     }
-    
-    private var onboardingView: some View {
-          FirstRunSetupView { items in
-              manager.setRecurringItems(items)
-          }
-      }
-    
+
+    private func refreshBudgetState() {
+        do {
+            let hasActiveTemplates = try repository.hasActiveRecurringTemplateItems()
+            showOnboarding = !hasActiveTemplates
+            guard hasActiveTemplates else {
+                currentOperations = []
+                return
+            }
+
+            _ = try repository.createMonthIfNeeded(for: .now)
+            reloadCurrentOperations()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func signedAmountString(for operation: BudgetOperation) -> String {
+        let formatted = CurrencyFormatting.formatCurrency(operation.amount, code: currencyCode)
+        return operation.type == .expense ? "-\(formatted)" : "+\(formatted)"
+    }
+
     private func progressColor(_ progress: Double) -> Color {
         switch progress {
         case 0.5...:
@@ -243,5 +378,9 @@ struct Homepage: View {
 
 #Preview {
     Homepage()
-        .environmentObject(ExpenseManager())
+        .modelContainer(for: [
+            RecurringTemplateItem.self,
+            BudgetMonth.self,
+            BudgetOperation.self
+        ], inMemory: true)
 }

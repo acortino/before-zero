@@ -10,9 +10,9 @@ import SwiftUI
 struct FirstRunSetupView: View {
     @AppStorage(AppCurrency.Keys.currency) private var currencyRaw: String = AppCurrency.eur.rawValue
 
-    @State private var items: [RecurringItem] = []
+    @State private var items: [RecurringTemplateDraft] = []
 
-    var onComplete: ([RecurringItem]) -> Void
+    var onComplete: ([RecurringTemplateDraft]) -> Void
 
     private var currencyCode: String {
         (AppCurrency(rawValue: currencyRaw) ?? .eur).code
@@ -26,7 +26,7 @@ struct FirstRunSetupView: View {
         items.indices.filter { items[$0].type == .expense }
     }
 
-    private var cleanedItems: [RecurringItem] {
+    private var cleanedItems: [RecurringTemplateDraft] {
         items.filter {
             !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.amount > 0
         }
@@ -67,7 +67,7 @@ struct FirstRunSetupView: View {
 
                     Button {
                         items.append(
-                            RecurringItem(type: .income, label: "", amount: 0)
+                            RecurringTemplateDraft(type: .income, label: "", amount: 0)
                         )
                     } label: {
                         Label("Add income", systemImage: "plus.circle")
@@ -86,7 +86,7 @@ struct FirstRunSetupView: View {
 
                     Button {
                         items.append(
-                            RecurringItem(type: .expense, label: "", amount: 0)
+                            RecurringTemplateDraft(type: .expense, label: "", amount: 0)
                         )
                     } label: {
                         Label("Add expense", systemImage: "minus.circle")
